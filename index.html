@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cálculo de Folga e Interferência</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel para traduzir o código -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body {
+            background-color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        /* Estilos específicos para inputs azuis */
+        .input-blue {
+            background-color: #bfdbfe; /* blue-200 */
+            border: 2px solid #3b82f6; /* blue-500 */
+            color: #1e3a8a; /* blue-900 */
+            font-weight: bold;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .input-blue:focus {
+            background-color: #ffffff;
+            border-color: #2563eb;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        /* Animação para destacar mudanças */
+        @keyframes highlight {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .pulse-change {
+            animation: highlight 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Tabela completa de Fios de Chumbo baseada nas imagens
+        const WIRE_TABLE = [
+            { size: "0,20 mm", min: 0.06, max: 0.13 },
+            { size: "0,30 mm", min: 0.10, max: 0.20 },
+            { size: "0,40 mm", min: 0.13, max: 0.26 },
+            { size: "0,50 mm", min: 0.16, max: 0.33 },
+            { size: "0,60 mm", min: 0.20, max: 0.40 },
+            { size: "0,70 mm", min: 0.23, max: 0.46 },
+            { size: "0,80 mm", min: 0.26, max: 0.53 },
+            { size: "0,90 mm", min: 0.30, max: 0.60 },
+            { size: "1,00 mm", min: 0.33, max: 0.66 },
+            { size: "1,50 mm", min: 0.50, max: 1.00 },
+            { size: "2,00 mm", min: 0.66, max: 1.22 },
+            { size: "2,50 mm", min: 0.83, max: 1.66 },
+            { size: "3,00 mm", min: 1.00, max: 2.00 },
+            { size: "3,50 mm", min: 1.66, max: 2.33 },
+            { size: "4,00 mm", min: 1.33, max: 2.66 },
+            { size: "4,50 mm", min: 1.50, max: 3.00 },
+            { size: "5,00 mm", min: 1.66, max: 3.33 }
+        ];
+
+        function App() {
+            // --- ESTADOS (Dados de Entrada) ---
+            const [nominalTarget, setNominalTarget] = useState(-0.01);
+            const [shimUsed, setShimUsed] = useState(0.30);
+            const [micrometerReading, setMicrometerReading] = useState(0.29);
+            
+            // --- ESTADOS (Resultados e Sugestões) ---
+            const [calculatedResult, setCalculatedResult] = useState(0);
+            const [wireRecommendation, setWireRecommendation] = useState("...");
+            const [shimSuggestedValue, setShimSuggestedValue] = useState(0);
+            const [statusColor, setStatusColor] = useState("bg-gray-100");
+            const [gapToMeasure, setGapToMeasure] = useState(0);
+
+            // --- LÓGICA PRINCIPAL ---
+            useEffect(() => {
+                // 1. Cálculo do Resultado Real: Leitura - Shim
+                const result = micrometerReading - shimUsed;
+                setCalculatedResult(result);
+
+                // 2. Cálculo da Sugestão de Shim (LÓGICA CORRIGIDA)
+                // Objetivo: Queremos que a leitura no micrômetro seja confortável.
+                // Uma leitura confortável é geralmente acima de 0.25mm (para usar fios comuns).
+                // Se a folga natural (nominal) for menor que 0.25 (ou negativa), usamos Shim.
+                
+                let recommendedShim = 0;
+                const TARGET_READING = 0.25; // Alvo de leitura segura
+                
+                if (nominalTarget < TARGET_READING) {
+                    // Shim necessário = Alvo - Nominal
+                    // Ex: Alvo 0.25 - Nominal 0.10 = Preciso de 0.15 de Shim
+                    // Ex: Alvo 0.25 - Nominal -0.05 = Preciso de 0.30 de Shim
+                    const shimNeeded = TARGET_READING - nominalTarget;
+                    
+                    // Arredondar para múltiplos de 0.05 (padrão comercial de shims)
+                    recommendedShim = Math.ceil(shimNeeded * 20) / 20;
+                    
+                    // Se o cálculo der algo muito pequeno (ex: 0.00 ou negativo), zera
+                    if (recommendedShim < 0) recommendedShim = 0;
+                } else {
+                    // Se a folga já é grande (ex: 0.50), não precisa de shim
+                    recommendedShim = 0;
+                }
+                
+                setShimSuggestedValue(recommendedShim);
+
+                // 3. Cálculo da Sugestão de Fio
+                // Usa o Shim que o usuário digitou, ou a sugestão se ele não digitou nada
+                const activeShim = shimUsed > 0 ? shimUsed : recommendedShim;
+                
+                // A folga física que o chumbo vai sentir
+                let estimatedPhysicalGap = nominalTarget + activeShim;
+                
+                // Proteção matemática
+                if (estimatedPhysicalGap < 0) estimatedPhysicalGap = 0.01;
+
+                setGapToMeasure(estimatedPhysicalGap);
+
+                // Procura na tabela
+                const matchingWires = WIRE_TABLE.filter(w => estimatedPhysicalGap >= w.min && estimatedPhysicalGap <= w.max);
+
+                if (matchingWires.length > 0) {
+                    // Pega o melhor fio (aquele onde a folga está mais longe dos extremos)
+                    const bestWire = matchingWires.reduce((prev, curr) => {
+                        const prevSafety = Math.min(Math.abs(estimatedPhysicalGap - prev.min), Math.abs(estimatedPhysicalGap - prev.max));
+                        const currSafety = Math.min(Math.abs(estimatedPhysicalGap - curr.min), Math.abs(estimatedPhysicalGap - curr.max));
+                        return currSafety > prevSafety ? curr : prev;
+                    });
+                    setWireRecommendation(bestWire.size);
+                } else {
+                    if (estimatedPhysicalGap < 0.06) setWireRecommendation("< 0,06 mm (Muito apertado)");
+                    else setWireRecommendation("> 3,33 mm (Muito folgado)");
+                }
+
+                // 4. Status (Cores)
+                const diff = Math.abs(result - nominalTarget);
+                if (diff <= 0.02) setStatusColor("bg-green-100 border-green-500 text-green-900"); // Bom
+                else if (diff <= 0.05) setStatusColor("bg-yellow-100 border-yellow-500 text-yellow-900"); // Atenção
+                else setStatusColor("bg-red-100 border-red-500 text-red-900"); // Ruim
+
+            }, [nominalTarget, shimUsed, micrometerReading]);
+
+            const handleFocus = (e) => e.target.select();
+            const applyShim = () => setShimUsed(shimSuggestedValue);
+
+            return (
+                <div className="min-h-screen flex justify-center items-start py-8 px-4">
+                    <div className="w-full max-w-2xl bg-white rounded-lg card-shadow overflow-hidden border border-gray-200">
+                        
+                        {/* Cabeçalho */}
+                        <div className="bg-blue-800 p-6 text-white flex items-center gap-4">
+                            <div className="bg-white/20 p-3 rounded-full">
+                                <i className="fa-solid fa-calculator text-2xl"></i>
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-bold uppercase tracking-wide">Cálculo de Folga e Ajuste</h1>
+                                <p className="text-blue-200 text-sm">Definição de Shims e Fio de Chumbo</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-8">
+                            
+                            {/* Passo 1: Definição */}
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-4 pb-6 border-b border-gray-100">
+                                <div>
+                                    <label className="block text-gray-700 font-bold text-lg">
+                                        1. Folga / Interferência Nominal
+                                    </label>
+                                    <span className="text-xs text-gray-400">
+                                        Use valores negativos (-) para interferência.
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="number" step="0.01"
+                                        value={nominalTarget}
+                                        onChange={e => setNominalTarget(parseFloat(e.target.value))}
+                                        onFocus={handleFocus}
+                                        className="input-blue w-32 h-12 text-xl rounded shadow-sm"
+                                    />
+                                    <span className="text-gray-500 font-bold">mm</span>
+                                </div>
+                            </div>
+
+                            {/* Passo 2: Sugestões (Shims e Fio) */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                
+                                {/* Card Sugestão Shim */}
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col justify-between">
+                                    <div>
+                                        <h3 className="text-blue-800 font-bold mb-2 text-sm uppercase">
+                                            <i className="fa-solid fa-layer-group mr-1"></i> Sugestão de Shim
+                                        </h3>
+                                        <div className="text-center mb-2">
+                                            <span className="text-3xl font-bold text-blue-700">
+                                                {shimSuggestedValue > 0 ? shimSuggestedValue.toFixed(2) : "0.00"}
+                                                <span className="text-sm font-normal ml-1">mm</span>
+                                            </span>
+                                            <p className="text-xs text-blue-400 mt-1">
+                                                {shimSuggestedValue > 0 ? "Adicionado para facilitar a leitura" : "Folga suficiente sem shim"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    {shimSuggestedValue > 0 && shimSuggestedValue !== shimUsed && (
+                                        <button onClick={applyShim} className="w-full py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+                                            Aplicar Sugestão
+                                        </button>
+                                    )}
+
+                                    <div className="mt-4 pt-3 border-t border-blue-200">
+                                        <label className="block text-xs font-bold text-blue-900 mb-1">SHIM REAL USADO:</label>
+                                        <input 
+                                            type="number" step="0.01" min="0"
+                                            value={shimUsed}
+                                            onChange={e => setShimUsed(parseFloat(e.target.value))}
+                                            onFocus={handleFocus}
+                                            className="input-blue w-full h-10 text-lg rounded"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Card Sugestão Fio */}
+                                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                                    <h3 className="text-yellow-800 font-bold mb-2 text-sm uppercase">
+                                        <i className="fa-solid fa-ruler-combined mr-1"></i> Fio Recomendado
+                                    </h3>
+                                    <div className="text-center py-4">
+                                        <span className="text-4xl font-black text-gray-800 block">
+                                            {wireRecommendation}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-center text-gray-500 bg-yellow-100 rounded py-1 px-2">
+                                        Para medir folga física de ~{gapToMeasure.toFixed(2)} mm
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Passo 3: Leitura */}
+                            <div className="pt-2">
+                                <div className="flex flex-col md:flex-row items-end gap-4">
+                                    <div className="flex-grow w-full">
+                                        <label className="block text-gray-700 font-bold text-lg mb-2">
+                                            2. Leitura no Micrômetro
+                                        </label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number" step="0.01" min="0"
+                                                value={micrometerReading}
+                                                onChange={e => setMicrometerReading(parseFloat(e.target.value))}
+                                                onFocus={handleFocus}
+                                                className="input-blue w-full h-16 text-3xl rounded-lg shadow-sm"
+                                            />
+                                            <span className="absolute right-4 top-6 text-gray-500 font-bold">mm</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Resultado */}
+                                    <div className={`w-full md:w-1/2 p-4 rounded-lg border-2 ${statusColor} transition-colors text-center`}>
+                                        <span className="text-xs font-bold uppercase tracking-widest opacity-60">
+                                            Resultado Final
+                                        </span>
+                                        <div className="text-4xl font-black my-1">
+                                            {calculatedResult > 0 ? "+" : ""}
+                                            {calculatedResult.toFixed(2)}
+                                            <span className="text-lg ml-1 font-normal opacity-50">mm</span>
+                                        </div>
+                                        <div className="text-xs font-semibold mt-2 px-2 py-1 bg-white/50 rounded inline-block">
+                                             {Math.abs(calculatedResult - nominalTarget) <= 0.02 ? "OK / DENTRO DA TOLERÂNCIA" : "FORA DA TOLERÂNCIA"}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
